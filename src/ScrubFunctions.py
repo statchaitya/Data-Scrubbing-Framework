@@ -8,7 +8,7 @@ colnames = ['date', 'gender', 'amount']
 
 def datetime_check(values):
     #date_format = "%Y-%m-%d"
-    comments = ""
+    error_values = []
     count = 0
 
     for i in range(len(values)):
@@ -17,28 +17,28 @@ def datetime_check(values):
         except:
             actual_value = values[i]
             values[i] = np.nan
-            comments = comments + f"Could not validate date for value {actual_value}" + "\n"
+            error_values.append(actual_value)
             count += 1
             
-    return(values, comments, count)
+    return(values, error_values, count)
 
 def character_check(values):
-    comments = ""
+    error_values = []
     count = 0
 
     for i in range(len(values)):
         if is_numeric(values[i]):
             actual_value = values[i]
             values[i] = np.nan
-            comments = comments + f"Value is actually a number -- {actual_value}" + "\n"
+            error_values.append(actual_value)
             count += 1
         elif is_datetime(values[i]):
             actual_value = values[i]
             values[i] = np.nan
-            comments = comments + f"Value is actually a date -- {actual_value}" + "\n"
+            error_values.append(actual_value)
             count += 1
 
-    return(values, comments, count)
+    return(values, error_values, count)
 
 def numeric_range_check(value, lower_b, upper_b):
     if lower_b <= float(value) <= upper_b:
@@ -75,7 +75,7 @@ def is_numeric(num):
             return isint
 
 def numeric_check(values):
-    comments = ""
+    error_values = []
     count = 0
 
     for i in range(len(values)):
@@ -84,34 +84,34 @@ def numeric_check(values):
         else:
             actual_value = values[i]
             values[i] = np.nan
-            comments = comments + f"The value {actual_value} is not a number" + "\n"
+            error_values.append(actual_value)
             count += 1
 
-    return(values, comments, count)
+    return(values, error_values, count)
 
 def dtype_check(df, colname, constrained_dt):
     if constrained_dt == 'datetime_dtype':
         ''' Actions to check datetime '''
         values_list = df[colname].tolist()
-        output_column, comments, error_corrected = datetime_check(values_list)
+        output_column, error_values, error_corrected = datetime_check(values_list)
         
     elif constrained_dt == 'character_dtype':
         ''' Actions for character '''
         values_list = df[colname].tolist()
-        output_column, comments, error_corrected = character_check(values_list)
+        output_column, error_values, error_corrected = character_check(values_list)
     elif constrained_dt == 'numeric_dtype':
         ''' Actions for character '''
         values_list = df[colname].tolist()
-        output_column, comments, error_corrected = numeric_check(values_list)
+        output_column, error_values, error_corrected = numeric_check(values_list)
 
-    return(output_column, comments, error_corrected)
+    return(output_column, error_values, error_corrected)
 
 def range_check(values, value_range):
     '''
     Checks if column values are in range
     If not, assign None
     '''
-    comments = ''
+    error_values = []
     count = 0
     lower_bound = min(value_range)
     upper_bound = max(value_range)
@@ -123,12 +123,12 @@ def range_check(values, value_range):
             actual_value = values[i]
             values[i] = np.nan
             count += 1
-            comments = comments + f"Value out of range {actual_value}" + "\n"
+            error_values.append(actual_value)
 
-    return(values, comments, count)
+    return(values, error_values, count)
 
 def membership_check(values, membership_set):
-    comments = ''
+    error_values = []
     count = 0
     membership_set.append(np.nan)
     
@@ -140,24 +140,20 @@ def membership_check(values, membership_set):
                 actual_value = values[i]
                 values[i] = 'MALE'
                 count += 1
-                comments = comments + f"Value '{actual_value}' changed to 'MALE'" + "\n"
+                error_values.append(actual_value)
             elif lower_string in ['female', 'f']:
                 actual_value = values[i]
                 values[i] = 'FEMALE'
                 count += 1
-                comments = comments + f"Value '{actual_value}' changed to 'FEMALE'" + "\n"
+                error_values.append(actual_value)
             else:
                 actual_value = values[i]
                 values[i] = np.nan
                 count += 1
-                comments = comments + f"Value {actual_value} is not in membership set {membership_set}" + "\n"
+                error_values.append(actual_value)
     
-    return(values, comments, count)
+    return(values, error_values, count)
             
-        
-
-
-
 
 def scrub(df, constraints_dict, range_dict, membership_dict):
     '''
@@ -176,27 +172,25 @@ def scrub(df, constraints_dict, range_dict, membership_dict):
 
     for col in columns:
         # For each column in a df run dtype_check based on appropriate dtype
-        scrubbed_column, comments, num_errors = dtype_check(df, col, constraints_dict[col][0])
+        scrubbed_column, error_values, num_errors = dtype_check(df, col, constraints_dict[col][0])
         df[col] = scrubbed_column
         dtype_errors_dict[col] = num_errors
-        dtype_comments_dict[col] = comments
+        dtype_comments_dict[col] = error_values
 
     for col in range_dict.keys():
-        scrubbed_col, comments, num_errors = range_check(df[col].values, range_dict[col])
+        scrubbed_col, error_values, num_errors = range_check(df[col].values, range_dict[col])
         df[col] = scrubbed_col
         range_errors_dict[col] = num_errors
-        range_comments_dict[col] = comments
+        range_comments_dict[col] = error_values
 
     for col in membership_dict.keys():
-        scrubbed_col, comments, num_errors = membership_check(df[col].values, membership_dict[col])
+        scrubbed_col, error_values, num_errors = membership_check(df[col].values, membership_dict[col])
         df[col] = scrubbed_col
         membership_errors_dict[col] = num_errors
-        membership_comments_dict[col] = comments
+        membership_comments_dict[col] = error_values
     
 
     return(df, dtype_comments_dict, dtype_errors_dict, range_comments_dict, range_errors_dict, membership_comments_dict, membership_errors_dict)
-
-
 
 
 
