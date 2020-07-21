@@ -1,27 +1,42 @@
-import os
-os.chdir("C:/DataScience/Github/Data-Scrubbing-Framework/src/")
-import ScrubFunctions as SF
+import boto3
 import pandas as pd
+
+scrub_bucket = 'predictable-ml-testing'
+fileidcsv = 'fileids_2.csv'
+
+s3_client = boto3.client('s3')
+data_s3_object = s3_client.get_object(Bucket=scrub_bucket, Key=fileidcsv)
+data = pd.read_csv(data_s3_object['Body'])
+data.head()
+
 import datetime
-import time
 
-start = time.time()
+dt_right_now = datetime.datetime.today()
+# **** Following parsing should work. If not the logic will fail
+# **** Timezones of both the dates should be the same for comparability
+fileid_dates = pd.to_datetime(data['upload_date'])
+time_differences = fileid_dates - pd.to_datetime(dt_right_now)
+min_id = time_differences.idxmin()
 
-essential_cols = ['Per Nbr', 'Dt of Svc', 'CPT4', 'Diag 1', 'Department', 'Component',\
-     'Payer Name', 'Tran Dt', 'Pay Amt', 'Billed Amt', 'Place Of Serv']
+most_recent_cid = data.loc[min_id, 'cid']
+most_recent_gid = data.loc[min_id, 'gid']
+most_recent_wf_id = data.loc[min_id, 'wf_id']
 
-data = pd.read_csv("C:/Coherence/data/goal_01_customer_01.csv",\
-                    parse_dates=['Dt of Svc', 'Tran Dt'],
-                    usecols=essential_cols)
+from sagemaker import get_execution_role
 
-goal_id = 1
-customer_id = 1
-batch_date = datetime.datetime.today()
-'''
-Assumptions:
-    1. We know the incoming paramter name (column name) and their dtype before they come in
-    2. Following dictionaries use that information.
-'''
+role = get_execution_role()
+folder = 'working-files'
+tr_filename = '_'.join(["wf", str(most_recent_wf_id)]) + ".csv"
+data_location = 's3://{}/{}/{}'.format(scrub_bucket, folder, tr_filename)
+
+tr_data = pd.read_csv(data_location)
+tr_data.head()
+
+
+import os
+parent_dir = "/home/ec2-user/SageMaker"
+os.chdir(parent_dir)
+from ScrubbingEngine import ScrubFunctions as SF
 
 constraints_dict = {'Loc Name': ['numeric_dtype'],
                     'Post Date': ['datetime_dtype'],
@@ -76,23 +91,17 @@ constraints_dict = {'Loc Name': ['numeric_dtype'],
                     'Mod Dt': ['datetime_dtype'],
                     'Modified By': ['character_dtype']}
 
-# range_dict = {'line_srvc_cnt': range(0, 150000),
-#             'bene_unique_cnt': range(0, 150000),
-#             'bene_day_srvc_cnt': range(0, 150000),
-#             'average_Medicare_allowed_amt': range(0, 150000),
-#             'average_submitted_chrg_amt': range(0, 150000),
-#             'average_Medicare_payment_amt': range(0, 150000),
-#             'average_Medicare_standard_amt': range(0, 150000)}
 
-# membership_dict = {'run_or_not': False,
-#                 'gender': ['MALE', 'FEMALE']}
+goal_id = 1
+customer_id = 1
+batch_date = datetime.datetime.today()
 
-data_new, out_dict = SF.scrub(data, constraints_dict, goal_id, customer_id)
+data_new, out_dict = SF.scrub(tr_data, constraints_dict)
 
-od = {key.upper():[str(value)] for key, value in out_dict.items()}
+
+od = {key:[str(value)] for key, value in out_dict.items()}
 pddf = pd.DataFrame(od)
 
-end = time.time()
-
-latency_seconds = end - start
-print(latency_seconds/60)
+outgoing_folder = 'scrub-reports'
+outgoing_filename = '_'.join(['SR', tr_filename])
+pddf.to_csv('s3://{}/{}/{}'.format(scrub_bucket, outgoing_folder, outgoing_filename))
